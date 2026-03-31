@@ -3,7 +3,14 @@ import { Droplets, Sun, Moon, Calendar, Sparkles, CheckCircle2, Circle, Send, Re
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let ai: GoogleGenAI | null = null;
+try {
+  if (process.env.GEMINI_API_KEY) {
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+} catch (e) {
+  console.error("Failed to initialize GoogleGenAI", e);
+}
 
 type Category = 'morning' | 'evening' | 'weekly';
 
@@ -166,6 +173,9 @@ export default function App() {
     setIsLoading(true);
 
     try {
+      if (!ai) {
+        throw new Error("عذراً، مفتاح API الخاص بـ Gemini غير متوفر. يرجى إضافته في إعدادات Vercel (Environment Variables) لكي يعمل المساعد الذكي.");
+      }
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: newMessages.map(m => ({
