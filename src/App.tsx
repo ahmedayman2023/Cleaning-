@@ -207,9 +207,9 @@ export default function App() {
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-teal-100 p-2 rounded-xl text-teal-600">
-              <Droplets className="w-6 h-6" />
+              <Sparkles className="w-6 h-6" />
             </div>
-            <h1 className="text-xl font-bold text-teal-800">نظافتي</h1>
+            <h1 className="text-xl font-bold text-teal-800">روتينك</h1>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-sm font-medium text-teal-600">إنجاز اليوم</div>
