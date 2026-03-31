@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Droplets, Sun, Moon, Calendar, Sparkles, CheckCircle2, Circle, Send, RefreshCw, Plus, Edit2, Trash2, X } from 'lucide-react';
+import { Droplets, Sun, Moon, Calendar, Sparkles, CheckCircle2, Circle, Send, RefreshCw, Plus, Edit2, Trash2, X, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
 
@@ -10,24 +10,25 @@ type Category = 'morning' | 'evening' | 'weekly';
 interface Task {
   id: string;
   title: string;
+  description?: string;
   category: Category;
   completed: boolean;
   dayOfWeek?: number;
 }
 
 const INITIAL_TASKS: Task[] = [
-  { id: '1', title: 'غسل الوجه بالغسول المناسب', category: 'morning', completed: false },
-  { id: '2', title: 'تفريش الأسنان (دقيقتين)', category: 'morning', completed: false },
+  { id: '1', title: 'غسل الوجه بالغسول المناسب', description: 'استخدم غسولاً لطيفاً يناسب نوع بشرتك، ودلكه بحركات دائرية لمدة 60 ثانية.', category: 'morning', completed: false },
+  { id: '2', title: 'تفريش الأسنان (دقيقتين)', description: 'استخدم معجون أسنان يحتوي على الفلورايد، وفرش أسنانك بحركات دائرية لطيفة لمدة دقيقتين كاملتين.', category: 'morning', completed: false },
   { id: '3', title: 'استخدام مزيل العرق', category: 'morning', completed: false },
   { id: '4', title: 'تمشيط الشعر وترتيبه', category: 'morning', completed: false },
   { id: '5', title: 'الاستحمام', category: 'morning', completed: false },
   { id: '6', title: 'تفريش الأسنان', category: 'evening', completed: false },
-  { id: '7', title: 'غسل الوجه وإزالة الأوساخ/المكياج', category: 'evening', completed: false },
-  { id: '8', title: 'ترطيب البشرة', category: 'evening', completed: false },
+  { id: '7', title: 'غسل الوجه وإزالة الأوساخ/المكياج', description: 'تأكد من إزالة جميع آثار المكياج وواقي الشمس قبل النوم لتجنب انسداد المسام.', category: 'evening', completed: false },
+  { id: '8', title: 'ترطيب البشرة', description: 'استخدم مرطباً ليلياً مناسباً لبشرتك للحفاظ على ترطيبها أثناء النوم.', category: 'evening', completed: false },
   { id: '9', title: 'قص وتقليم الأظافر', category: 'weekly', dayOfWeek: 5, completed: false },
-  { id: '10', title: 'تغيير أغطية السرير والوسائد', category: 'weekly', dayOfWeek: 6, completed: false },
+  { id: '10', title: 'تغيير أغطية السرير والوسائد', description: 'يساعد تغيير الأغطية أسبوعياً في تقليل تراكم البكتيريا وخلايا الجلد الميتة، مما يحسن صحة البشرة.', category: 'weekly', dayOfWeek: 6, completed: false },
   { id: '11', title: 'غسل مناشف الحمام', category: 'weekly', dayOfWeek: 6, completed: false },
-  { id: '12', title: 'تنظيف أدوات العناية الشخصية', category: 'weekly', dayOfWeek: 0, completed: false },
+  { id: '12', title: 'تنظيف أدوات العناية الشخصية', description: 'نظف فرش الشعر، وأدوات الحلاقة، وفرش المكياج لمنع تراكم البكتيريا.', category: 'weekly', dayOfWeek: 0, completed: false },
 ];
 
 const DAYS_OF_WEEK = [
@@ -61,6 +62,7 @@ export default function App() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [modalCategory, setModalCategory] = useState<Category>('morning');
   const [taskTitleInput, setTaskTitleInput] = useState('');
+  const [taskDescriptionInput, setTaskDescriptionInput] = useState('');
   const [taskDayInput, setTaskDayInput] = useState<number>(new Date().getDay());
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
@@ -114,6 +116,7 @@ export default function App() {
     setModalCategory(category);
     setEditingTask(null);
     setTaskTitleInput('');
+    setTaskDescriptionInput('');
     setTaskDayInput(category === 'weekly' ? selectedDay : new Date().getDay());
     setIsModalOpen(true);
   };
@@ -122,6 +125,7 @@ export default function App() {
     setModalCategory(task.category);
     setEditingTask(task);
     setTaskTitleInput(task.title);
+    setTaskDescriptionInput(task.description || '');
     setTaskDayInput(task.dayOfWeek ?? new Date().getDay());
     setIsModalOpen(true);
   };
@@ -134,12 +138,14 @@ export default function App() {
       setTasks(tasks.map(t => t.id === editingTask.id ? { 
         ...t, 
         title: taskTitleInput.trim(),
+        description: taskDescriptionInput.trim(),
         dayOfWeek: modalCategory === 'weekly' ? taskDayInput : undefined
       } : t));
     } else {
       const newTask: Task = {
         id: Date.now().toString(),
         title: taskTitleInput.trim(),
+        description: taskDescriptionInput.trim(),
         category: modalCategory,
         completed: false,
         dayOfWeek: modalCategory === 'weekly' ? taskDayInput : undefined
@@ -414,6 +420,15 @@ export default function App() {
                     autoFocus
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">الوصف أو التعليمات (اختياري)</label>
+                  <textarea
+                    value={taskDescriptionInput}
+                    onChange={(e) => setTaskDescriptionInput(e.target.value)}
+                    placeholder="أضف تفاصيل أو خطوات للمهمة..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm min-h-[80px] resize-y"
+                  />
+                </div>
                 {modalCategory === 'weekly' && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">اليوم</label>
@@ -474,32 +489,57 @@ export default function App() {
 }
 
 function TaskItem({ task, onToggle, onEdit, onDelete }: { task: Task, onToggle: () => void, onEdit: () => void, onDelete: () => void }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const hasDescription = !!task.description?.trim();
+
   return (
     <motion.div 
       layout
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-all group ${
+      className={`flex flex-col gap-2 p-3 rounded-xl transition-all group ${
         task.completed ? 'bg-teal-50/50 opacity-75' : 'bg-slate-50 hover:bg-teal-50/30'
       }`}
     >
-      <div className="flex items-center gap-3 flex-1 cursor-pointer" onClick={onToggle}>
-        <button className={`flex-shrink-0 transition-colors ${task.completed ? 'text-teal-500' : 'text-slate-300 hover:text-teal-400'}`}>
-          {task.completed ? <CheckCircle2 className="w-6 h-6" /> : <Circle className="w-6 h-6" />}
-        </button>
-        <span className={`flex-1 text-sm font-medium transition-all ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-          {task.title}
-        </span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-1 cursor-pointer" onClick={() => hasDescription ? setIsExpanded(!isExpanded) : onToggle()}>
+          <button onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`flex-shrink-0 transition-colors ${task.completed ? 'text-teal-500' : 'text-slate-300 hover:text-teal-400'}`}>
+            {task.completed ? <CheckCircle2 className="w-6 h-6" /> : <Circle className="w-6 h-6" />}
+          </button>
+          <div className="flex-1 flex items-center gap-2">
+            <span className={`text-sm font-medium transition-all ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+              {task.title}
+            </span>
+            {hasDescription && (
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+          <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors">
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-        <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors">
-          <Edit2 className="w-4 h-4" />
-        </button>
-        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
+      
+      <AnimatePresence>
+        {isExpanded && hasDescription && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="pl-2 pr-9 pb-1 text-sm text-slate-500 whitespace-pre-wrap border-t border-slate-100/50 pt-2 mt-1">
+              {task.description}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
