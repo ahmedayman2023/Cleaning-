@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Droplets, Sun, Moon, Calendar, Sparkles, CheckCircle2, Circle, Send, RefreshCw, Plus, Edit2, Trash2, X, ChevronDown } from 'lucide-react';
+import { Droplets, Sun, Moon, Calendar, Sparkles, CheckCircle2, Circle, Send, RefreshCw, Plus, Edit2, Trash2, X, ChevronDown, LogIn, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
+import { auth, db, googleProvider, signInWithPopup, signOut, handleFirestoreError, OperationType } from './firebase';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
 let ai: GoogleGenAI | null = null;
 try {
@@ -21,6 +24,7 @@ interface Task {
   category: Category;
   completed: boolean;
   dayOfWeek?: number;
+  userId: string;
 }
 
 const INITIAL_TASKS: Task[] = [
@@ -54,7 +58,9 @@ interface ChatMessage {
 }
 
 export default function App() {
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [activeTab, setActiveTab] = useState<'routine' | 'ai'>('routine');
   const [messages, setMessages] = useState<ChatMessage[]>([{
     role: 'model',
@@ -75,91 +81,92 @@ export default function App() {
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
 
   useEffect(() => {
-    const today = new Date().toDateString();
-    const lastLogin = localStorage.getItem('hygiene_last_login');
-    const savedTasks = localStorage.getItem('hygiene_tasks');
-    
-    if (savedTasks) {
-      let parsedTasks = JSON.parse(savedTasks);
-      
-      // Migration for older tasks without dayOfWeek
-      parsedTasks = parsedTasks.map((t: Task) => {
-        if (t.category === 'weekly' && t.dayOfWeek === undefined) {
-          const initial = INITIAL_TASKS.find(it => it.id === t.id);
-          return { ...t, dayOfWeek: initial?.dayOfWeek ?? 5 };
-        }
-        return t;
-      });
-
-      if (lastLogin !== today) {
-        parsedTasks = parsedTasks.map((t: Task) => 
-          (t.category === 'morning' || t.category === 'evening') ? { ...t, completed: false } : t
-        );
-        localStorage.setItem('hygiene_last_login', today);
-      }
-      setTasks(parsedTasks);
-    } else {
-      localStorage.setItem('hygiene_last_login', today);
-    }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('hygiene_tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const toggleTask = (id: string) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
-  };
-
-  const resetWeekly = () => {
-    setTasks(tasks.map(t => t.category === 'weekly' ? { ...t, completed: false } : t));
-  };
-
-  const handleOpenAddModal = (category: Category) => {
-    setModalCategory(category);
-    setEditingTask(null);
-    setTaskTitleInput('');
-    setTaskDescriptionInput('');
-    setTaskDayInput(category === 'weekly' ? selectedDay : new Date().getDay());
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEditModal = (task: Task) => {
-    setModalCategory(task.category);
-    setEditingTask(task);
-    setTaskTitleInput(task.title);
-    setTaskDescriptionInput(task.description || '');
-    setTaskDayInput(task.dayOfWeek ?? new Date().getDay());
-    setIsModalOpen(true);
-  };
-
-  const handleSaveTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!taskTitleInput.trim()) return;
-
-    if (editingTask) {
-      setTasks(tasks.map(t => t.id === editingTask.id ? { 
-        ...t, 
-        title: taskTitleInput.trim(),
-        description: taskDescriptionInput.trim(),
-        dayOfWeek: modalCategory === 'weekly' ? taskDayInput : undefined
-      } : t));
-    } else {
-      const newTask: Task = {
-        id: Date.now().toString(),
-        title: taskTitleInput.trim(),
-        description: taskDescriptionInput.trim(),
-        category: modalCategory,
-        completed: false,
-        dayOfWeek: modalCategory === 'weekly' ? taskDayInput : undefined
-      };
-      setTasks([...tasks, newTask]);
+    if (!isAuthReady || !user) {
+      setTasks([]);
+      return;
     }
-    setIsModalOpen(false);
+
+    const tasksRef = collection(db, 'users', user.uid, 'tasks');
+    const unsubscribe = onSnapshot(tasksRef, (snapshot) => {
+      const fetchedTasks: Task[] = [];
+      snapshot.forEach((doc) => {
+        fetchedTasks.push(doc.data() as Task);
+      });
+      setTasks(fetchedTasks);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users/' + user.uid + '/tasks');
+    });
+
+    return () => unsubscribe();
+  }, [isAuthReady, user]);
+
+  const handleToggleTask = async (task: Task) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'tasks', task.id), { ...task, completed: !task.completed });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'users/' + user.uid + '/tasks/' + task.id);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'tasks', taskId));
+      setTaskToDelete(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'users/' + user.uid + '/tasks/' + taskId);
+    }
+  };
+
+  const handleSaveTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !taskTitleInput.trim()) return;
+
+    const taskId = editingTask ? editingTask.id : Date.now().toString();
+    const newTask: Task = {
+      id: taskId,
+      title: taskTitleInput.trim(),
+      description: taskDescriptionInput.trim(),
+      category: modalCategory,
+      completed: editingTask ? editingTask.completed : false,
+      dayOfWeek: modalCategory === 'weekly' ? taskDayInput : undefined,
+      userId: user.uid
+    };
+
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'tasks', taskId), newTask);
+      setIsModalOpen(false);
+      setEditingTask(null);
+      setTaskTitleInput('');
+      setTaskDescriptionInput('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'users/' + user.uid + '/tasks/' + taskId);
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Login error:", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -265,7 +272,7 @@ export default function App() {
               <div className="space-y-2">
                 <AnimatePresence mode="popLayout">
                   {morningTasks.map(task => (
-                    <TaskItem key={task.id} task={task} onToggle={() => toggleTask(task.id)} onEdit={() => handleOpenEditModal(task)} onDelete={() => setTaskToDelete(task.id)} />
+                    <TaskItem key={task.id} task={task} onToggle={() => handleToggleTask(task)} onEdit={() => handleOpenEditModal(task)} onDelete={() => setTaskToDelete(task.id)} />
                   ))}
                 </AnimatePresence>
               </div>
@@ -287,7 +294,7 @@ export default function App() {
               <div className="space-y-2">
                 <AnimatePresence mode="popLayout">
                   {eveningTasks.map(task => (
-                    <TaskItem key={task.id} task={task} onToggle={() => toggleTask(task.id)} onEdit={() => handleOpenEditModal(task)} onDelete={() => setTaskToDelete(task.id)} />
+                    <TaskItem key={task.id} task={task} onToggle={() => handleToggleTask(task)} onEdit={() => handleOpenEditModal(task)} onDelete={() => setTaskToDelete(task.id)} />
                   ))}
                 </AnimatePresence>
               </div>
@@ -303,10 +310,6 @@ export default function App() {
                   <h2 className="text-lg font-bold text-slate-800">المهام الأسبوعية</h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={resetWeekly} className="text-xs flex items-center gap-1 text-teal-600 hover:text-teal-800 bg-teal-50 px-2 py-1 rounded-md transition-colors">
-                    <RefreshCw className="w-3 h-3" />
-                    إعادة تعيين
-                  </button>
                   <button onClick={() => handleOpenAddModal('weekly')} className="text-teal-600 hover:bg-teal-50 p-1.5 rounded-lg transition-colors">
                     <Plus className="w-5 h-5" />
                   </button>
@@ -337,7 +340,7 @@ export default function App() {
                     </motion.div>
                   ) : (
                     weeklyTasks.map(task => (
-                      <TaskItem key={task.id} task={task} onToggle={() => toggleTask(task.id)} onEdit={() => handleOpenEditModal(task)} onDelete={() => setTaskToDelete(task.id)} />
+                      <TaskItem key={task.id} task={task} onToggle={() => handleToggleTask(task)} onEdit={() => handleOpenEditModal(task)} onDelete={() => setTaskToDelete(task.id)} />
                     ))
                   )}
                 </AnimatePresence>

@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "Task": {
+      "title": "Task",
+      "description": "A hygiene task.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The task ID." },
+        "title": { "type": "string", "description": "The task title." },
+        "description": { "type": "string", "description": "The task description." },
+        "category": { "type": "string", "description": "The task category (morning, evening, weekly)." },
+        "completed": { "type": "boolean", "description": "Whether the task is completed." },
+        "dayOfWeek": { "type": "number", "description": "The day of the week (0-6)." },
+        "userId": { "type": "string", "description": "The user ID." }
+      },
+      "required": ["id", "title", "category", "completed", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/tasks/{taskId}": {
+      "schema": { "$ref": "Task" },
+      "description": "Tasks for a specific user."
+    }
+  }
+}
